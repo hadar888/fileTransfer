@@ -65,11 +65,6 @@ string hexify(const unsigned char* buffer, unsigned int length){
 	return ss.str();
 }
 
-enum MsgsCodes {
-	Register = 1100, SendPublicKey = 1101, sendFile = 1103, crcOk = 1104,
-	crcNotOk = 1105, crcNotOk4 = 1106, registerOk = 2100, GetAes = 2102, fileOkAndCrc = 2103, gotMsg = 2104
-};
-
 int const maxFailAllow = 3;
 
 bool sendPacketWithFail(int sock, Packet packet, Packet* returnMsg) {
@@ -84,7 +79,6 @@ bool sendPacketWithFail(int sock, Packet packet, Packet* returnMsg) {
 		send(sock, msgPtr, strlen(msgPtr), 0);
 		printf("%d msg sent\n", packet.header.code);
 		int valread = recv(sock, buffer, 1024, 0);
-
 		Packet returnMsg(buffer);
 
 		if (strcmp(buffer, "FAILD") == 0) {
