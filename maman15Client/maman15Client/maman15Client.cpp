@@ -23,7 +23,7 @@ using namespace std;
 
 int connectToServer(TransferInfo transferInfo) {
 	WSADATA Data;
-	int sock = 0, valread;
+	int sock = 0;
 	struct sockaddr_in serv_addr;
 
 	WSAStartup(MAKEWORD(2, 2), &Data); // 2.2 version
@@ -67,7 +67,7 @@ string hexify(const unsigned char* buffer, unsigned int length){
 
 int const maxFailAllow = 3;
 
-bool sendPacketWithFail(int sock, Packet packet, char* responseBuffer) {
+bool sendPacketWithFail(int sock, ClientPacket packet, char* responseBuffer, int responseBufferLen) {
 	char buffer[1024] = { 0 };
 
 	string packetJsonString = packet.packetToJsonString();
@@ -80,7 +80,7 @@ bool sendPacketWithFail(int sock, Packet packet, char* responseBuffer) {
 		printf("%d msg sent\n", packet.header->code);
 		int valread = recv(sock, buffer, 1024, 0);
 		Packet returnMsg(buffer);
-		std::memcpy(responseBuffer, buffer, sizeof(char) * 16);
+		std::memcpy(responseBuffer, buffer, sizeof(char) * responseBufferLen);
 
 		if (strcmp(buffer, "FAILD") == 0) {
 			failCount++;
@@ -107,23 +107,24 @@ int main(int argc, char const *argv[])
 		return -1;
 	}
 
-	int valread;
 	char buffer[1024] = { 0 };
 
 	//create packet for register
 	char emptyClientId[] = "empty";
 	ClientHeader clientHeader(emptyClientId, 3, Register, sizeof(char) * transferInfo.name.length());
 	RegisterPayload registerPayload(transferInfo.name.c_str());
-	Packet registerPacket(&clientHeader, &registerPayload);
+	ClientPacket registerPacket(&clientHeader, &registerPayload);
 
 	char registerResponseBuffer[23] = { 0 };
-	if (!sendPacketWithFail(sock, registerPacket, registerResponseBuffer)) {
+	if (!sendPacketWithFail(sock, registerPacket, registerResponseBuffer, 23)) {
 		printf("The username maybe in use already");
 		return -1;
 	}
 
+	char clientIdFromServer[16];
 	ServerRegisterOkResponsePacket serverRegisterOkResponsePacket(registerResponseBuffer);
-	std::memcpy(clientHeader.clientId, serverRegisterOkResponsePacket.payload->clientId, sizeof(clientHeader.clientId));
+	std::memcpy(clientIdFromServer, serverRegisterOkResponsePacket.payload->clientId, sizeof(char) * 16);
+	std::memcpy(&clientHeader.clientId, &clientIdFromServer, sizeof(char) * 16);
 	clientHeader.code = SendPublicKey;
 	clientHeader.payloadSize = 255 + 160;
 
@@ -132,17 +133,19 @@ int main(int argc, char const *argv[])
 	string pubkeyHex = hexify(reinterpret_cast<const unsigned char*>(pubkey.c_str()), pubkey.length());
 
 	SendPublicKeyPayload sendPublicKeyPayload(transferInfo.name.c_str(), pubkeyHex.c_str());
-	Packet publicKeyPacket(&clientHeader, &sendPublicKeyPayload);
+	ClientPacket publicKeyPacket(&clientHeader, &sendPublicKeyPayload);
 
-	char publicKeyResponseBuffer[16 + 255] = { 0 }; // should not be 255, should be the size of AES key encrepted
-	if (!sendPacketWithFail(sock, publicKeyPacket, publicKeyResponseBuffer)) {
+	char publicKeyResponseBuffer[1 + 2 + 4 + 16 + 24] = { 0 }; // should not be 40, should be the size of AES key encrepted
+	if (!sendPacketWithFail(sock, publicKeyPacket, publicKeyResponseBuffer, 1 + 2 + 4 + 16 + 24)) {
 		printf("Faild to get encrepted AES key");
 		return -1;
 	}
 
+	ServerGotAesEncreptedKeyPacket serverGotAesEncreptedKeyPacket(publicKeyResponseBuffer);
+	const char* aesEncreptedKey = serverGotAesEncreptedKeyPacket.payload->encreptedKey;
+	printf("aesEncreptedKey: %s", aesEncreptedKey);
+
 	/*
-	valread = recv(sock, buffer, 1024, 0);
-	printf("retuen msg: %s\n\n", buffer);
 	//TODO: decrypt public AES key, with private RSA key (save the public AES key into publicAESKey)
 
 	bool isCrsOk = false;

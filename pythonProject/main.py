@@ -79,7 +79,9 @@ if __name__ == '__main__':
                             # encrypted_AES_key = rsa.encrypt(AES_key, RAS_public_key)
                             encrypted_AES_key = 'encrypted_AES_public_key'
                             ServerClientConnection.send_msg_to_client(conn,
-                                struct.pack('<BHI16s24s', 3, 2102, 40, str.encode(user_uuid), str.encode(encrypted_AES_key)))
+                                                                      struct.pack('<BHI16s24s', 3, 2102, 40,
+                                                                                  str.encode(user_uuid),
+                                                                                  str.encode(encrypted_AES_key)))
 
                         elif request_code == ServerClientConnection.RequestType.SEND_FILE.value:
                             file_data = ServerClientConnection.get_field_from_cient_msg(client_msg, "file")
