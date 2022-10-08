@@ -12,55 +12,25 @@ public:
 
 class RegisterPayload : public Payload {
 public:
-	char name[255];
+	std::string name;
 
-	RegisterPayload(const char* name) {
-		memcpy(this->name, name, sizeof(char) * 255);
-	}
-
-	RegisterPayload(Payload* payload) {
-
+	RegisterPayload(std::string name) {
+		this->name = name;
 	}
 
 	std::string payloadToJsonString() {
-		std::string nameStr(this->name);
-
 		return "\"{"
-			"'Name': '" + nameStr + "'"
+			"'Name': '" + this->name + "'"
 			"}\"";
 	}
 };
 
 class RegisterOkPayload : public Payload {
 public:
-	unsigned char* clientId;
+	unsigned char* name;
 
-	RegisterOkPayload(unsigned char* clientId) {
-		this->clientId = clientId;
-	}
-};
-
-class SendPublicKeyPayload : public Payload {
-public:
-	char name[255];
-	std::string publicKey = {0};
-
-	SendPublicKeyPayload(const char* name, const char* publicKey) {
-		memcpy(this->name, name, sizeof(char) * 255);
-		this->publicKey = publicKey;
-	}
-
-	SendPublicKeyPayload(Payload* payload) {
-
-	}
-
-	std::string payloadToJsonString() {
-		std::string nameStr(this->name);
-
-		return "\"{"
-			"'Name': '" + nameStr + "', "
-			"'Public Key': '" + this->publicKey + "'"
-			"}\"";
+	RegisterOkPayload(unsigned char* name) {
+		this->name = name;
 	}
 };
 
