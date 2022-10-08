@@ -64,18 +64,22 @@ if __name__ == '__main__':
                                 break
 
                         elif request_code == ServerClientConnection.RequestType.SEND_KEY.value:
+                            request_payload = ServerClientConnection.get_payload(client_msg)
                             RAS_public_key = ServerClientConnection.get_field_from_cient_msg(
-                                client_msg, "ras_public_key")
+                                request_payload, "Public Key")
                             try:
+                                user_uuid = ServerClientConnection.get_field_from_cient_msg(
+                                    client_msg_header, "Client ID")
                                 dbFunctions.save_user_public_key(db_connection, user_uuid, RAS_public_key)
                             except Exception as save_ras_error:
                                 print("WARNING: RAS public key failed to save in the DB, ", save_ras_error)
                                 break
-                            AES_public_key = b'Sixteen byte key'
-                            # TODO: encrypt AES public key with RAS
-                            # encrypted_AES_public_key = rsa.encrypt(AES_public_key, RAS_public_key)
-                            encrypted_AES_public_key = 'encrypted_AES_public_key'
-                            ServerClientConnection.send_msg_to_client(conn, encrypted_AES_public_key)
+                            AES_key = b'Sixteen byte key'
+                            # TODO: encrypt AES key with RAS
+                            # encrypted_AES_key = rsa.encrypt(AES_key, RAS_public_key)
+                            encrypted_AES_key = 'encrypted_AES_public_key'
+                            ServerClientConnection.send_msg_to_client(conn,
+                                struct.pack('<BHI16s24s', 3, 2102, 40, str.encode(user_uuid), str.encode(encrypted_AES_key)))
 
                         elif request_code == ServerClientConnection.RequestType.SEND_FILE.value:
                             file_data = ServerClientConnection.get_field_from_cient_msg(client_msg, "file")

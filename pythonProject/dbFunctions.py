@@ -60,7 +60,7 @@ def save_user_public_key(conn, client_id, public_key):
                   SET Public_key = ?
                   WHERE id = ?'''
     cur = conn.cursor()
-    cur.execute(sql, (public_key, client_id))
+    cur.execute(sql, (public_key, str(client_id)))
     conn.commit()
 
     return cur.lastrowid

@@ -67,7 +67,7 @@ string hexify(const unsigned char* buffer, unsigned int length){
 
 int const maxFailAllow = 3;
 
-bool sendPacketWithFail(int sock, Packet packet, Packet* returnMsg) {
+bool sendPacketWithFail(int sock, Packet packet, char* responseBuffer) {
 	char buffer[1024] = { 0 };
 
 	string packetJsonString = packet.packetToJsonString();
@@ -77,22 +77,23 @@ bool sendPacketWithFail(int sock, Packet packet, Packet* returnMsg) {
 	int failCount = 0;
 	do {
 		send(sock, msgPtr, strlen(msgPtr), 0);
-		printf("%d msg sent\n", packet.header.code);
+		printf("%d msg sent\n", packet.header->code);
 		int valread = recv(sock, buffer, 1024, 0);
 		Packet returnMsg(buffer);
+		std::memcpy(responseBuffer, buffer, sizeof(char) * 16);
 
 		if (strcmp(buffer, "FAILD") == 0) {
 			failCount++;
 			printf("server responded with an error\n");
 		}
 		else {
-			printf("retuen msg code: %d\n\n", returnMsg.header.code);
+			printf("retuen msg code: %d\n\n", returnMsg.header->code);
 			isMsgSucceeded = true;
 		}
 
 	} while (failCount < maxFailAllow && !isMsgSucceeded);
 	if (failCount == maxFailAllow) {
-		printf("FATAL: Fail to send %d msg\n", packet.header.code);
+		printf("FATAL: Fail to send %d msg\n", packet.header->code);
 		return false;
 	}
 	return true;
@@ -110,23 +111,36 @@ int main(int argc, char const *argv[])
 	char buffer[1024] = { 0 };
 
 	//create packet for register
-	ClientHeader clientHeader("empty", 3, Register, sizeof(char) * transferInfo.name.length());
-	RegisterPayload registerPayload(transferInfo.name);
-	Packet packet(clientHeader, &registerPayload);
-	Packet returnMsg;
+	char emptyClientId[] = "empty";
+	ClientHeader clientHeader(emptyClientId, 3, Register, sizeof(char) * transferInfo.name.length());
+	RegisterPayload registerPayload(transferInfo.name.c_str());
+	Packet registerPacket(&clientHeader, &registerPayload);
 
-	if (!sendPacketWithFail(sock, packet, &returnMsg)) {
+	char registerResponseBuffer[23] = { 0 };
+	if (!sendPacketWithFail(sock, registerPacket, registerResponseBuffer)) {
 		printf("The username maybe in use already");
 		return -1;
 	}
 
-	/*
+	ServerRegisterOkResponsePacket serverRegisterOkResponsePacket(registerResponseBuffer);
+	std::memcpy(clientHeader.clientId, serverRegisterOkResponsePacket.payload->clientId, sizeof(clientHeader.clientId));
+	clientHeader.code = SendPublicKey;
+	clientHeader.payloadSize = 255 + 160;
+
 	RSAPrivateWrapper rsapriv;
 	string pubkey = rsapriv.getPublicKey();
 	string pubkeyHex = hexify(reinterpret_cast<const unsigned char*>(pubkey.c_str()), pubkey.length());
-	string publicKey = "{\"request_type\": 2, \"ras_public_key\": \"" + pubkeyHex + "\"}";
-	send(sock, publicKey.c_str(), publicKey.length(), 0);
-	printf("public RSA key msg sent\n");
+
+	SendPublicKeyPayload sendPublicKeyPayload(transferInfo.name.c_str(), pubkeyHex.c_str());
+	Packet publicKeyPacket(&clientHeader, &sendPublicKeyPayload);
+
+	char publicKeyResponseBuffer[16 + 255] = { 0 }; // should not be 255, should be the size of AES key encrepted
+	if (!sendPacketWithFail(sock, publicKeyPacket, publicKeyResponseBuffer)) {
+		printf("Faild to get encrepted AES key");
+		return -1;
+	}
+
+	/*
 	valread = recv(sock, buffer, 1024, 0);
 	printf("retuen msg: %s\n\n", buffer);
 	//TODO: decrypt public AES key, with private RSA key (save the public AES key into publicAESKey)

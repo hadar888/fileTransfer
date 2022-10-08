@@ -21,7 +21,7 @@ def get_port():
 
 class RequestType(Enum):
     REGISTER = 1100
-    SEND_KEY = 2
+    SEND_KEY = 1101
     SEND_FILE = 3
     ABORT = 4
     CRC_OK = 5

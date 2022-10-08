@@ -1,4 +1,6 @@
-﻿  maman15Client.cpp
-c:\users\הדר\source\repos\maman15client\maman15client\maman15client.cpp(26): warning C4101: 'valread': unreferenced local variable
-c:\users\הדר\source\repos\maman15client\maman15client\maman15client.cpp(115): warning C4101: 'valread': unreferenced local variable
-  maman15Client.vcxproj -> C:\Users\הדר\source\repos\maman15Client\Debug\maman15Client.exe
+﻿  crc32.cpp
+  maman15Client.cpp
+c:\hadar\filetransfer\maman15client\maman15client\maman15client.cpp(26): warning C4101: 'valread': unreferenced local variable
+c:\hadar\filetransfer\maman15client\maman15client\maman15client.cpp(110): warning C4101: 'valread': unreferenced local variable
+  Generating Code...
+  maman15Client.vcxproj -> C:\Hadar\fileTransfer\maman15Client\Debug\maman15Client.exe

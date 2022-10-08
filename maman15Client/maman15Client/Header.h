@@ -28,18 +28,20 @@ public:
 
 class ClientHeader: public Header {
 public:
-	std::string clientId;
+	char clientId[16];
 
-	ClientHeader(std::string clientId, char version, short code, int payloadSize) {
-		this->clientId = clientId;
+	ClientHeader(char clientId[16], char version, short code, int payloadSize) {
+		std::memcpy(this->clientId, clientId, sizeof(this->clientId));
 		this->code = code;
 		this->payloadSize = payloadSize;
 		this->version = version;
 	}
 
 	std::string headerToJsonString() {
+		std::string clientIdStr(this->clientId);
+
 		return "\"{"
-			"'Client ID': '" + this->clientId + "', "
+			"'Client ID': '" + clientIdStr + "', "
 			"'Version': " + std::to_string(this->version) + ", "
 			"'Code': " + std::to_string(this->code) + ", "
 			"'Payload size': " + std::to_string(this->payloadSize) +
