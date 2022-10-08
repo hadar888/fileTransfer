@@ -79,6 +79,16 @@ public:
 
 		this->header = &serverHeader;
 	}
+};
+
+class ClientPacket : public Packet {
+public:
+	ClientHeader* header;
+
+	ClientPacket(ClientHeader* header, Payload* payload) {
+		this->header = header;
+		this->payload = payload;
+	}
 
 	std::string packetToJsonString() {
 		return "{\"Header\": " + (*header).headerToJsonString() + ", "
@@ -92,10 +102,28 @@ public:
 
 	ServerRegisterOkResponsePacket(char* buffer) {
 		unsigned char clientId[16];
-
 		memcpy(clientId, &buffer[7], sizeof(char) * 16);
 		RegisterOkPayload registerOkPayload(clientId);
 		this->payload = &registerOkPayload;
+	}
+};
+
+class ServerGotAesEncreptedKeyPacket : public Packet {
+public:
+	GotAesEncreptedKeyPayload* payload;
+
+	ServerGotAesEncreptedKeyPacket(char* buffer) {
+		unsigned char clientId[16];
+		std::string aesEncreptedKey;
+		int encreptedKeyLen;
+
+		memcpy(clientId, &buffer[7], sizeof(char) * 16);
+		memcpy(&encreptedKeyLen, &buffer[3], sizeof(int));
+		encreptedKeyLen = encreptedKeyLen - sizeof(clientId);
+		memcpy(&aesEncreptedKey, &buffer[23], sizeof(char) * encreptedKeyLen);
+
+		GotAesEncreptedKeyPayload gotAesEncreptedKeyPayload(clientId, aesEncreptedKey, encreptedKeyLen);
+		this->payload = &gotAesEncreptedKeyPayload;
 	}
 };
 

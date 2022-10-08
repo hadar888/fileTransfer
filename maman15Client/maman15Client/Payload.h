@@ -33,10 +33,10 @@ public:
 
 class RegisterOkPayload : public Payload {
 public:
-	unsigned char* clientId;
+	unsigned char clientId[16];
 
 	RegisterOkPayload(unsigned char* clientId) {
-		this->clientId = clientId;
+		memcpy(this->clientId, clientId, sizeof(char) * 16);
 	}
 };
 
@@ -61,6 +61,17 @@ public:
 			"'Name': '" + nameStr + "', "
 			"'Public Key': '" + this->publicKey + "'"
 			"}\"";
+	}
+};
+
+class GotAesEncreptedKeyPayload : public Payload {
+public:
+	unsigned char clientId[16];
+	const char* encreptedKey;
+
+	GotAesEncreptedKeyPayload(unsigned char clientId[16], std::string encreptedKey, int encreptedKeyLen) {
+		memcpy(this->clientId, clientId, sizeof(char) * 16);
+		this->encreptedKey = encreptedKey.c_str();
 	}
 };
 

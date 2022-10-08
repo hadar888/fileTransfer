@@ -43,9 +43,9 @@ def get_field_from_cient_msg(client_msg, filed_name):
 def get_client_msg(conn):
     data = conn.recv(1024)
     try:
-        text = data.decode("utf-8", errors='ignore')
-        print("text: ", text)
-        return json.loads(text)
+        client_msg = data.decode("utf-8", errors='ignore')
+        print("client msg: ", client_msg)
+        return json.loads(client_msg)
     except (json.decoder.JSONDecodeError, UnicodeDecodeError):
         print("ERROR: faild to get msg form client, format error ", data)
         return ""
