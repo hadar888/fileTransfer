@@ -11,12 +11,12 @@ enum MsgsCodes {
 
 class Packet {
 public:
-	Header* header;
-	Payload* payload;
+	Header header;
+	Payload *payload;
 
 	Packet(){}
 
-	Packet(Header* header, Payload* payload) {
+	Packet(Header header, Payload* payload) {
 		this->header = header;
 		this->payload = payload;
 	}
@@ -33,6 +33,17 @@ public:
 		
 		switch (serverHeader.code)
 		{
+		case registerOk:
+		{
+			unsigned char clientId[16];
+
+			memcpy(&clientId, &buffer[7], sizeof(char) * 16);
+			RegisterOkPayload registerOkPayload(clientId);
+			this->payload = &registerOkPayload;
+
+			break;
+		}
+
 		case getAes:
 		{
 			unsigned char clientId[16];
@@ -76,25 +87,12 @@ public:
 			break;
 		}
 
-		this->header = &serverHeader;
+		this->header = serverHeader;
 	}
 
 	std::string packetToJsonString() {
-		return "{\"Header\": " + (*header).headerToJsonString() + ", "
+		return "{\"Header\": " + header.headerToJsonString() + ", "
 			"\"Payload\": " + (*payload).payloadToJsonString() + "}";
-	}
-};
-
-class ServerRegisterOkResponsePacket: public Packet {
-public:
-	RegisterOkPayload* payload;
-
-	ServerRegisterOkResponsePacket(char* buffer) {
-		unsigned char clientId[16];
-
-		memcpy(clientId, &buffer[7], sizeof(char) * 16);
-		RegisterOkPayload registerOkPayload(clientId);
-		this->payload = &registerOkPayload;
 	}
 };
 
