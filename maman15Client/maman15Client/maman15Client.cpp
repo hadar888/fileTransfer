@@ -69,14 +69,12 @@ int const maxFailAllow = 3;
 
 bool sendPacketWithFail(int sock, ClientPacket packet, char* responseBuffer, int responseBufferLen) {
 	char buffer[1024] = { 0 };
-
-	string packetJsonString = packet.packetToJsonString();
-	char *msgPtr = &packetJsonString[0];
+	packet.packetToJsonString(buffer);
 
 	bool isMsgSucceeded = false;
 	int failCount = 0;
 	do {
-		send(sock, msgPtr, strlen(msgPtr), 0);
+		send(sock, buffer, 23 + packet.header->payloadSize, 0);
 		printf("%d msg sent\n", packet.header->code);
 		int valread = recv(sock, buffer, 1024, 0);
 		Packet returnMsg(buffer);
@@ -110,9 +108,9 @@ int main(int argc, char const *argv[])
 	char buffer[1024] = { 0 };
 
 	//create packet for register
-	char emptyClientId[] = "empty";
-	ClientHeader clientHeader(emptyClientId, 3, Register, sizeof(char) * transferInfo.name.length());
-	RegisterPayload registerPayload(transferInfo.name.c_str());
+	char emptyClientId[] = "0000000000000000";
+	ClientHeader clientHeader(emptyClientId, 3, Register, 255);
+	RegisterPayload registerPayload(transferInfo.name);
 	ClientPacket registerPacket(&clientHeader, &registerPayload);
 
 	char registerResponseBuffer[23] = { 0 };
@@ -123,45 +121,51 @@ int main(int argc, char const *argv[])
 
 	char clientIdFromServer[16];
 	ServerRegisterOkResponsePacket serverRegisterOkResponsePacket(registerResponseBuffer);
-	std::memcpy(clientIdFromServer, serverRegisterOkResponsePacket.payload->clientId, sizeof(char) * 16);
+	std::memcpy(clientIdFromServer, serverRegisterOkResponsePacket.payload.clientId, sizeof(char) * 16);
 	std::memcpy(&clientHeader.clientId, &clientIdFromServer, sizeof(char) * 16);
 	clientHeader.code = SendPublicKey;
 	clientHeader.payloadSize = 255 + 160;
 
 	RSAPrivateWrapper rsapriv;
 	string pubkey = rsapriv.getPublicKey();
-	string pubkeyHex = hexify(reinterpret_cast<const unsigned char*>(pubkey.c_str()), pubkey.length());
 
-	SendPublicKeyPayload sendPublicKeyPayload(transferInfo.name.c_str(), pubkeyHex.c_str());
+	SendPublicKeyPayload sendPublicKeyPayload(transferInfo.name, pubkey.c_str());
 	ClientPacket publicKeyPacket(&clientHeader, &sendPublicKeyPayload);
 
-	char publicKeyResponseBuffer[1 + 2 + 4 + 16 + 24] = { 0 }; // should not be 40, should be the size of AES key encrepted
-	if (!sendPacketWithFail(sock, publicKeyPacket, publicKeyResponseBuffer, 1 + 2 + 4 + 16 + 24)) {
+	char publicKeyResponseBuffer[1 + 2 + 4 + 16 + 128] = { 0 }; // should not be 128, should be the size of AES key encrepted
+	if (!sendPacketWithFail(sock, publicKeyPacket, publicKeyResponseBuffer, 1 + 2 + 4 + 16 + 160)) {
 		printf("Faild to get encrepted AES key");
 		return -1;
 	}
-
 	ServerGotAesEncreptedKeyPacket serverGotAesEncreptedKeyPacket(publicKeyResponseBuffer);
-	const char* aesEncreptedKey = serverGotAesEncreptedKeyPacket.payload->encreptedKey;
-	printf("aesEncreptedKey: %s", aesEncreptedKey);
 
-	/*
-	//TODO: decrypt public AES key, with private RSA key (save the public AES key into publicAESKey)
+	// decrypt AES key, with private RSA key (save the AES key into aesKey)
+	std::string encreptedAesKey(serverGotAesEncreptedKeyPacket.payload.encreptedKey);
+	std::string aesKey = rsapriv.decrypt(encreptedAesKey.c_str(), 128);
+	
 
 	bool isCrsOk = false;
-	int counter = 0;
-	while (!isCrsOk && counter < 3) {
-		//TODO: encrypt file data with public AES key
-		//AESWrapper aes((unsigned char*)publicAESKey, 16);
-		//string ciphertext = aes.encrypt(msgToSend.c_str(), msgToSend.length());
-		string ciphertextHex = "should be encrypted file data"; //TODO: replace with this line: hexify(reinterpret_cast<const unsigned char*>(ciphertext.c_str()), ciphertext.length());
+	int failCount = 0;
+	do {											  
+		AESWrapper aes(reinterpret_cast<const unsigned char*>(aesKey.c_str()), 16);
+		// TODO: fix first 16 chars bug
+		const char* fileData = "aaaaaaaaaaaaaaaamy name is hey my name is hadar text text hadar text text text textt hey my name is hadar text text hadar text text text textt hey my name is hadar text text hadar";
 
-		string fileData = "{\"request_type\": 3, \"file\": \"" + ciphertextHex + "\"}";
-		send(sock, fileData.c_str(), fileData.length(), 0);
-		printf("file data sent\n");
-		valread = recv(sock, buffer, 1024, 0);
-		printf("retuen msg: %s\n\n", buffer);
+		char fileName[255] = "fileName";
+		std::string encryptedFileData = aes.encrypt(fileData, strlen(fileData));
 
+		clientHeader.code = SendFile;
+		clientHeader.payloadSize = 16 + 4 + 255 + encryptedFileData.length();
+		SendFilePayload sendFilePayload(clientHeader.clientId, encryptedFileData.length(), fileName, encryptedFileData.c_str());
+		ClientPacket filePacket(&clientHeader, &sendFilePayload);
+
+		char fileResponseBuffer[1 + 2 + 4 + 16 + 4 + 255 + 4] = { 0 };
+		if (!sendPacketWithFail(sock, filePacket, fileResponseBuffer, 1 + 2 + 4 + 16 + 4 + 255 + 4)) {
+			printf("Faild to crc from server");
+			return -1;
+		}
+
+		/*
 		uint32_t table[256];
 		crc32::generate_table(table);
 		uint32_t crc = crc32::update(table, 0, ciphertextHex.c_str(), ciphertextHex.length());
@@ -178,20 +182,16 @@ int main(int argc, char const *argv[])
 			printf("crc ok msg sent\n");
 		}
 		else {
+			failCount++;
 			printf("Checksum failed");
-			if (counter + 1 < 3) {
-				printf(", the system will try to send the file again %d more times\n\n", 2 - counter);
-			}
 		}
-		counter++;
+		*/
+	} while (!isCrsOk && failCount < maxFailAllow);
+	if (failCount == maxFailAllow) {
+		//char abort[] = "{\"request_type\": 4, \"msg\": \"abort msg\"}";
+		//send(sock, abort, strlen(abort), 0);
+		//printf("abort msg sent\n");
 	}
-	if (counter == 3) {
-		char abort[] = "{\"request_type\": 4, \"msg\": \"abort msg\"}";
-		send(sock, abort, strlen(abort), 0);
-		printf("abort msg sent\n");
-	}
-
-	*/
 
 	WSACleanup();
 	return 0;

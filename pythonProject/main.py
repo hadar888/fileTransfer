@@ -8,13 +8,15 @@ import json
 import os
 import time
 import struct
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
+import base64
 
 clients_names = []
 
 
-def register_user(client_register_msg, db_connection):
-    request_payload = ServerClientConnection.get_payload(client_register_msg)
-    username = ServerClientConnection.get_field_from_cient_msg(request_payload, "Name")
+def register_user(request_payload, db_connection):
+    username = request_payload[0:255:1].decode("utf-8")
     if username != "":  # and username not in clients_names
         user_uuid = uuid.uuid4()
         clients_names.append({"user_name": username, "uuid": user_uuid})
@@ -50,11 +52,12 @@ if __name__ == '__main__':
                 while True:
                     try:
                         client_msg = ServerClientConnection.get_client_msg(conn)
-                        client_msg_header = ServerClientConnection.get_header(client_msg)
-                        request_code = ServerClientConnection.get_field_from_cient_msg(client_msg_header, "Code")
+                        client_msg_header = client_msg["Header"]
+                        client_msg_payload = client_msg["Payload"]
+                        request_code = client_msg_header["Code"]
 
                         if request_code == ServerClientConnection.RequestType.REGISTER.value:
-                            user_uuid = register_user(client_msg, db_connection)
+                            user_uuid = register_user(client_msg_payload, db_connection)
                             if user_uuid:
                                 ServerClientConnection.send_msg_to_client(
                                     conn, struct.pack('<BHI16s', 3, 2100, 16, user_uuid.bytes))
@@ -64,32 +67,41 @@ if __name__ == '__main__':
                                 break
 
                         elif request_code == ServerClientConnection.RequestType.SEND_KEY.value:
-                            request_payload = ServerClientConnection.get_payload(client_msg)
-                            RAS_public_key = ServerClientConnection.get_field_from_cient_msg(
-                                request_payload, "Public Key")
+                            username = client_msg_payload[0:255:1].decode("utf-8")
+                            RAS_public_key = client_msg_payload[255:415:1]
+                            user_uuid_bytes = client_msg_header["ClientId"]
                             try:
-                                user_uuid = ServerClientConnection.get_field_from_cient_msg(
-                                    client_msg_header, "Client ID")
                                 dbFunctions.save_user_public_key(db_connection, user_uuid, RAS_public_key)
                             except Exception as save_ras_error:
                                 print("WARNING: RAS public key failed to save in the DB, ", save_ras_error)
                                 break
+
                             AES_key = b'Sixteen byte key'
-                            # TODO: encrypt AES key with RAS
-                            # encrypted_AES_key = rsa.encrypt(AES_key, RAS_public_key)
-                            encrypted_AES_key = 'encrypted_AES_public_key'
+                            cipher = PKCS1_OAEP.new(RSA.importKey(RAS_public_key))
+                            encrypted_AES_key = cipher.encrypt(AES_key)
                             ServerClientConnection.send_msg_to_client(conn,
-                                                                      struct.pack('<BHI16s24s', 3, 2102, 40,
-                                                                                  str.encode(user_uuid),
-                                                                                  str.encode(encrypted_AES_key)))
+                                                                      struct.pack('<BHI16s128s', 3, 2102,
+                                                                                  16 + len(encrypted_AES_key),
+                                                                                  user_uuid_bytes,
+                                                                                  encrypted_AES_key))
 
                         elif request_code == ServerClientConnection.RequestType.SEND_FILE.value:
-                            file_data = ServerClientConnection.get_field_from_cient_msg(client_msg, "file")
-                            # TODO: decrypt_file_data = decrypt file_data with AES_private_key
-                            decrypt_file_data = file_data
-                            file_data_crc = zlib.crc32(bytes(decrypt_file_data, 'utf-8'))
+                            file_size = int.from_bytes(client_msg_payload[16:20:1], byteorder='little', signed=False)
+                            file_name = client_msg_payload[20:275:1].decode("utf-8")
+                            file_data = client_msg_payload[275:275 + file_size:1]
+
+                            cipher_decrypt = AES.new(AES_key, AES.MODE_CBC, b"0000000000000000")
+                            decrypt_file_data = cipher_decrypt.decrypt(file_data)
+                            # TODO: fix bug for first 16 chars
+                            decrypt_file_data = decrypt_file_data[16:len(decrypt_file_data):1]
                             # TODO: check if crc32 is like linux checksum
-                            ServerClientConnection.send_msg_to_client(conn, str(file_data_crc))
+                            file_data_crc = zlib.crc32(decrypt_file_data)
+                            ServerClientConnection.send_msg_to_client(conn, struct.pack('<BHI16sI255sI', 3, 2103,
+                                                                                        16 + 4 + 255 + 4,
+                                                                                        user_uuid_bytes,
+                                                                                        file_size,
+                                                                                        file_name.encode('utf-8'),
+                                                                                        file_data_crc))
 
                         elif request_code == ServerClientConnection.RequestType.ABORT.value:
                             break
@@ -116,7 +128,8 @@ if __name__ == '__main__':
                                 print()
                             break
 
-                    except ConnectionResetError:
+                    except Exception as error:
+                        print("General error\n", error)
                         break
 
                 # TODO: kill the thread

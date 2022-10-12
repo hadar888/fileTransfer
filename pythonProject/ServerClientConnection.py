@@ -22,7 +22,7 @@ def get_port():
 class RequestType(Enum):
     REGISTER = 1100
     SEND_KEY = 1101
-    SEND_FILE = 3
+    SEND_FILE = 1103
     ABORT = 4
     CRC_OK = 5
 
@@ -33,34 +33,20 @@ class ReturnMsgType(Enum):
     SERVER_ERROR = "SERVER_ERROR"
 
 
-def get_field_from_cient_msg(client_msg, filed_name):
-    try:
-        return client_msg[filed_name]
-    except (KeyError, TypeError):
-        return ""
-
-
 def get_client_msg(conn):
-    data = conn.recv(1024)
     try:
-        client_msg = data.decode("utf-8", errors='ignore')
-        print("client msg: ", client_msg)
-        return json.loads(client_msg)
-    except (json.decoder.JSONDecodeError, UnicodeDecodeError):
-        print("ERROR: faild to get msg form client, format error ", data)
+        data = conn.recv(1024)
+        print("msg from client: ", data)
+        client_id = data[0:16:1]
+        version = int.from_bytes(data[16:17:1], byteorder='little', signed=False)
+        code = int.from_bytes(data[17:19:1], byteorder='little', signed=False)
+        payload_size = int.from_bytes(data[19:23:1], byteorder='little', signed=False)
+        payload = data[23:23 + payload_size:1]
+        return {"Header": {"ClientId": client_id, "Version": version, "Code": code, "PayloadSize": payload_size},
+                "Payload": payload}
+    except Exception as error:
+        print("ERROR: faild to get msg form client, format error\n", error)
         return ""
-
-
-def get_header(msg):
-    header = msg["Header"].replace("'", "\"")
-    print("header: ", header)
-    return json.loads(header)
-
-
-def get_payload(msg):
-    payload = msg["Payload"].replace("'", "\"")
-    print("payload: ", payload)
-    return json.loads(payload)
 
 
 def send_msg_to_client(conn, reply):
@@ -68,4 +54,4 @@ def send_msg_to_client(conn, reply):
     try:
         conn.sendall(reply)
     except Exception as error:
-        print("server error: fail to send msg to client: ", error)
+        print("Server error: fail to send msg to client\n", error)
