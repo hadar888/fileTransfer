@@ -37,15 +37,11 @@ public:
 		this->version = version;
 	}
 
-	std::string headerToJsonString() {
-		std::string clientIdStr(this->clientId);
-
-		return "\"{"
-			"'Client ID': '" + clientIdStr + "', "
-			"'Version': " + std::to_string(this->version) + ", "
-			"'Code': " + std::to_string(this->code) + ", "
-			"'Payload size': " + std::to_string(this->payloadSize) +
-			"}\"";
+	void headerToJsonString(char* headerDataToSend) {
+		std::memcpy(&headerDataToSend[0], &this->clientId, sizeof(char) * 16);
+		std::memcpy(&headerDataToSend[16], &this->version, sizeof(char));
+		std::memcpy(&headerDataToSend[17], &this->code, sizeof(short));
+		std::memcpy(&headerDataToSend[19], &this->payloadSize, sizeof(int));
 	}
 };
 

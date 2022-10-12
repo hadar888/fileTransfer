@@ -5,8 +5,8 @@
 #include "Payload.h"
 
 enum MsgsCodes {
-	Register = 1100, SendPublicKey = 1101, sendFile = 1103, crcOk = 1104,
-	crcNotOk = 1105, crcNotOk4 = 1106, registerOk = 2100, getAes = 2102, fileOkAndCrc = 2103, gotMsg = 2104
+	Register = 1100, SendPublicKey = 1101, SendFile = 1103, CrcOk = 1104,
+	CrcNotOk = 1105, CrcNotOk4 = 1106, RegisterOk = 2100, GetAes = 2102, FileOkAndCrc = 2103, GotMsg = 2104
 };
 
 class Packet {
@@ -34,7 +34,7 @@ public:
 		switch (serverHeader.code)
 		{
 
-		case getAes:
+		case GetAes:
 		{
 			unsigned char clientId[16];
 			//the size of publicEncryptedAesKey shuold not be 16, 16 is the size of the not encrypted key
@@ -49,7 +49,7 @@ public:
 			break;
 		}
 
-		case fileOkAndCrc:
+		case FileOkAndCrc:
 		{
 			unsigned char clientId[16];
 			unsigned int fileSize;
@@ -66,7 +66,7 @@ public:
 			break;
 		}
 
-		case gotMsg:
+		case GotMsg:
 		{
 			//unclear
 			break;
@@ -90,31 +90,31 @@ public:
 		this->payload = payload;
 	}
 
-	std::string packetToJsonString() {
-		return "{\"Header\": " + (*header).headerToJsonString() + ", "
-			"\"Payload\": " + (*payload).payloadToJsonString() + "}";
+	void packetToJsonString(char* packetDataToSend) {
+		(*header).headerToJsonString(packetDataToSend);
+		(*payload).payloadToJsonString(&packetDataToSend[23]);
 	}
 };
 
 class ServerRegisterOkResponsePacket : public Packet {
 public:
-	RegisterOkPayload* payload;
+	RegisterOkPayload payload;
 
 	ServerRegisterOkResponsePacket(char* buffer) {
 		unsigned char clientId[16];
 		memcpy(clientId, &buffer[7], sizeof(char) * 16);
 		RegisterOkPayload registerOkPayload(clientId);
-		this->payload = &registerOkPayload;
+		this->payload = registerOkPayload;
 	}
 };
 
 class ServerGotAesEncreptedKeyPacket : public Packet {
 public:
-	GotAesEncreptedKeyPayload* payload;
+	GotAesEncreptedKeyPayload payload;
 
 	ServerGotAesEncreptedKeyPacket(char* buffer) {
-		unsigned char clientId[16];
-		std::string aesEncreptedKey;
+		unsigned char clientId[16] = { 0 };
+		char aesEncreptedKey[128] = { 0 }; //TODO: should not be 128!!!! 
 		int encreptedKeyLen;
 
 		memcpy(clientId, &buffer[7], sizeof(char) * 16);
@@ -123,7 +123,7 @@ public:
 		memcpy(&aesEncreptedKey, &buffer[23], sizeof(char) * encreptedKeyLen);
 
 		GotAesEncreptedKeyPayload gotAesEncreptedKeyPayload(clientId, aesEncreptedKey, encreptedKeyLen);
-		this->payload = &gotAesEncreptedKeyPayload;
+		this->payload = gotAesEncreptedKeyPayload;
 	}
 };
 
