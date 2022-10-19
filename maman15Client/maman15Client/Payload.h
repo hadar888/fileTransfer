@@ -86,14 +86,59 @@ public:
 		memcpy(this->clientId, clientId, sizeof(char) * 16);
 		this->contentSize = contentSize;
 		memcpy(this->fileName, fileName, sizeof(char) * 255);
-		memcpy(&this->msgContent, &msgContent, sizeof(char) * contentSize);
+		this->msgContent = (char*)calloc(contentSize, sizeof(char));
+		memcpy(this->msgContent, msgContent, sizeof(char) * contentSize);
 	}
+
+	~SendFilePayload() {
+		free(msgContent);
+	}
+
 
 	void payloadToJsonString(char* payloadDataToSend) {
 		std::memcpy(&payloadDataToSend[0], &this->clientId, sizeof(char) * 16);
 		std::memcpy(&payloadDataToSend[16], &this->contentSize, sizeof(int));
 		std::memcpy(&payloadDataToSend[20], &this->fileName, sizeof(char) * 255);
 		std::memcpy(&payloadDataToSend[275], this->msgContent, sizeof(char) * 255);
+	}
+};
+
+class GotFilePayload : public Payload {
+public:
+	unsigned char clientId[16];
+	unsigned int contentSize;
+	unsigned char fileName[255];
+	unsigned int cksum;
+
+	GotFilePayload() {
+
+	}
+
+	GotFilePayload(unsigned char clientId[16], unsigned int contentSize, unsigned char fileName[255], unsigned int cksum) {
+		memcpy(this->clientId, clientId, sizeof(char) * 16);
+		memcpy(&this->contentSize, &contentSize, sizeof(int));
+		memcpy(this->fileName, fileName, sizeof(char) * 255);
+		memcpy(&this->cksum, &cksum, sizeof(int));
+	}
+};
+
+class CrcMsgPayload : public Payload {
+public:
+	char clientId[16];
+	char fileName[255];
+
+	CrcMsgPayload() {
+
+	}
+
+	CrcMsgPayload(char clientId[16], char fileName[255]) {
+		memcpy(this->clientId, clientId, sizeof(char) * 16);
+		memcpy(this->fileName, fileName, sizeof(char) * 255);
+	}
+
+	void payloadToJsonString(char* payloadDataToSend) {
+		std::memcpy(&payloadDataToSend[0], &this->clientId, sizeof(char) * 16);
+		std::memcpy(&payloadDataToSend[16], &this->fileName, sizeof(char) * 255);
 	}
 };
 
