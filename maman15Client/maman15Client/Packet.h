@@ -114,7 +114,7 @@ public:
 
 	ServerGotAesEncreptedKeyPacket(char* buffer) {
 		unsigned char clientId[16] = { 0 };
-		char aesEncreptedKey[128] = { 0 }; //TODO: should not be 128!!!! 
+		char aesEncreptedKey[128] = { 0 };
 		int encreptedKeyLen;
 
 		memcpy(clientId, &buffer[7], sizeof(char) * 16);
@@ -124,6 +124,26 @@ public:
 
 		GotAesEncreptedKeyPayload gotAesEncreptedKeyPayload(clientId, aesEncreptedKey, encreptedKeyLen);
 		this->payload = gotAesEncreptedKeyPayload;
+	}
+};
+
+class ServerGotFilePacket : public Packet {
+public:
+	GotFilePayload payload;
+
+	ServerGotFilePacket(char buffer[]) {
+		unsigned char clientId[16] = { 0 };
+		unsigned int fileSize = 0;
+		unsigned char fileName[255] = { 0 };
+		unsigned int cksum = 0;
+
+		memcpy(clientId, &buffer[7], sizeof(char) * 16);
+		memcpy(&fileSize, &buffer[23], sizeof(int));
+		memcpy(fileName, &buffer[27], sizeof(char) * 255);
+		memcpy(&cksum, &buffer[282], sizeof(int));
+
+		GotFilePayload gotFilePayload(clientId, fileSize, fileName, cksum);
+		this->payload = gotFilePayload;
 	}
 };
 
