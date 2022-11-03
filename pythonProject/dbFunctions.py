@@ -43,9 +43,9 @@ def init_db_tables(conn):
                                             AES_key BLOB(16)
                                         ); """
     sql_create_files_table = """ CREATE TABLE IF NOT EXISTS files (
-                                                ID text PRIMARY KEY,
+                                                ID text,
                                                 File_Name text NOT NULL,
-                                                Path_Name text NOT NULL,
+                                                Path_Name text NOT NULL PRIMARY KEY,
                                                 Verified INTEGER NOT NULL
                                             ); """
     is_create_client_table_ok = create_table(conn, sql_create_clients_table)
@@ -66,7 +66,7 @@ def save_new_user_in_db(conn, client_info):
     cur.execute(sql, client_info)
     conn.commit()
 
-    return cur.lastrowid
+    return True
 
 
 def save_user_public_key(conn, client_id, public_key):
@@ -76,11 +76,9 @@ def save_user_public_key(conn, client_id, public_key):
     cur = conn.cursor()
     cur.execute(sql, (public_key, client_id))
     conn.commit()
+    return True
 
-    return cur.lastrowid
 
-
-# TODO: use this function after creating the aes key
 def save_user_aes_key(conn, client_id, aes_key):
     sql = ''' UPDATE clients
                   SET AES_key = ?
@@ -88,17 +86,22 @@ def save_user_aes_key(conn, client_id, aes_key):
     cur = conn.cursor()
     cur.execute(sql, (aes_key, client_id))
     conn.commit()
-
-    return cur.lastrowid
+    return True
 
 
 def save_new_file_data(conn, client_id, filename, path_name):
     sql = ''' INSERT INTO files (id, File_Name, Path_Name, Verified)
                       VALUES(?, ?, ?, ?);'''
     cur = conn.cursor()
-    cur.execute(sql, (client_id, filename, path_name, 0))
+    try:
+        cur.execute(sql, (client_id, filename, path_name, 0))
+    except Exception:
+        print("Warning: this filename is already in use for this user, the file was rewritten")
+        sql = ''' UPDATE files SET Verified = 0 WHERE id = ? and File_Name = ?;'''
+        cur = conn.cursor()
+        cur.execute(sql, (client_id, filename))
     conn.commit()
-    return cur.lastrowid
+    return True
 
 
 def update_file_crc_verified(conn, client_id, filename):
@@ -106,4 +109,4 @@ def update_file_crc_verified(conn, client_id, filename):
     cur = conn.cursor()
     cur.execute(sql, (client_id, filename))
     conn.commit()
-    return cur.lastrowid
+    return True

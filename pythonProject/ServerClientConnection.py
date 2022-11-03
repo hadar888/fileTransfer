@@ -1,4 +1,6 @@
 from enum import Enum
+import uuid
+import socket
 
 
 def get_port():
@@ -37,16 +39,21 @@ class MsgTypes(Enum):
 
 def get_client_msg(conn):
     try:
-        data = conn.recv(1024)
-        client_id = data[0:16:1]
-        version = int.from_bytes(data[16:17:1], byteorder='little', signed=False)
-        code = int.from_bytes(data[17:19:1], byteorder='little', signed=False)
-        payload_size = int.from_bytes(data[19:23:1], byteorder='little', signed=False)
-        payload = data[23:23 + payload_size:1]
-        return {"ClientId": client_id, "Version": version, "Code": code, "PayloadSize": payload_size}, payload
+        header = conn.recv(23)
+
+        client_id = header[0:16:1]
+        version = int.from_bytes(header[16:17:1], byteorder='little', signed=False)
+        code = int.from_bytes(header[17:19:1], byteorder='little', signed=False)
+        payload_size = int.from_bytes(header[19:23:1], byteorder='little', signed=False)
+
+        payload = conn.recv(payload_size, socket.MSG_WAITALL)
+        return {"ClientId": uuid.UUID(bytes=client_id),
+                "Version": version,
+                "Code": code,
+                "PayloadSize": payload_size}, payload
     except Exception as error:
         print("ERROR: faild to get msg form client, format error\n", error)
-        return ""
+        return -1
 
 
 def send_msg_to_client(conn, reply):
