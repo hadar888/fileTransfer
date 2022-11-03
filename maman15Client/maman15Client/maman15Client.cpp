@@ -1,96 +1,80 @@
 ﻿#include "pch.h"
 
 #include <stdio.h>
-#include <winsock2.h>
 #include <ws2tcpip.h>
-#include <string.h>
 #include "AESWrapper.h"
 #include "RSAWrapper.h"
 #include "crc32.cpp"
-#include <iostream>
-#include <string>
-#include <iomanip>
-#include <sstream>
-#include "TransferInfo.h"
-#include "Header.h"
-#include "Payload.h"
+#include "TransferMeInfo.h"
 #include "Packet.h"
+#include "Base64Wrapper.h"
+#include <iomanip>
 
 #pragma comment(lib, "Ws2_32.lib")
 
 using namespace std;
+const unsigned int clientVersion = 3;
 
-int connectToServer(TransferInfo transferInfo) {
+int connectToServer(TransferMeInfo transferMeInfo) {
 	WSADATA Data;
 	int sock = 0;
 	struct sockaddr_in serv_addr;
 
-	WSAStartup(MAKEWORD(2, 2), &Data); // 2.2 version
-	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-	{
-		printf("\n Socket creation error \n");
-		return -1;
+	WSAStartup(MAKEWORD(2, 2), &Data);
+	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		printf("ERROR: Socket creation error\n");
+		exit(-1);
 	}
 
 	serv_addr.sin_family = AF_INET;
 	short port;
-	sscanf_s(transferInfo.serverPort.c_str(), "%hi", &port);
+	sscanf_s(transferMeInfo.serverPort.c_str(), "%hi", &port);
 	serv_addr.sin_port = htons(port);
 
 	// Convert IPv4 and IPv6 addresses from text to binary form
-	if (inet_pton(AF_INET, transferInfo.serverIp.c_str(), &serv_addr.sin_addr) <= 0)
-	{
-		printf("\nInvalid address/ Address not supported \n");
-		return -1;
+	if (inet_pton(AF_INET, transferMeInfo.serverIp.c_str(), &serv_addr.sin_addr) <= 0) {
+		printf("ERROR: Invalid address/ Address not supported\n");
+		exit(-1);
 	}
 
-	if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-	{
-		printf("\nConnection Failed \n");
-		return -1;
+	if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+		printf("Error: Connection Failed, the server migth not working or the port is not valid\n");
+		exit(-1);
 	}
 
 	return sock;
 }
 
-string hexify(const unsigned char* buffer, unsigned int length){
-	stringstream ss;
-	ios::fmtflags f(cout.flags());
-	for (size_t i = 0; i < length; i++)
-		ss << setfill('0') << setw(2) << (0xFF & buffer[i]) << " ";
-	cout << endl;
-	cout.flags(f);
-
-	return ss.str();
-}
-
 int const maxFailAllow = 3;
-
 bool sendPacketWithFail(int sock, ClientPacket packet, char* responseBuffer, int responseBufferLen) {
-	char buffer[1024] = { 0 };
-	packet.packetToJsonString(buffer);
+	char *buffer = (char*)calloc(23 + packet.header->payloadSize, sizeof(char));
+	packet.packetToBuffer(buffer);
 
 	bool isMsgSucceeded = false;
 	int failCount = 0;
 	do {
+		printf("Tyring to send %d msg...\n", packet.header->code);
 		send(sock, buffer, 23 + packet.header->payloadSize, 0);
-		printf("%d msg sent\n", packet.header->code);
-		int valread = recv(sock, buffer, 1024, 0);
-		Packet returnMsg(buffer);
-		std::memcpy(responseBuffer, buffer, sizeof(char) * responseBufferLen);
+		printf("%d msg sent\nWaiting for response msg from the server...\n", packet.header->code);
+		int valread = recv(sock, buffer, 1024, 0); // chceck this 1024!
+		string responseBufferString(buffer);
 
-		if (strcmp(buffer, "FAILD") == 0) {
+		if (strcmp(responseBufferString.substr(0, 5).c_str(), "FAILD") == 0) {
 			failCount++;
 			printf("server responded with an error\n");
 		}
 		else {
+			Packet returnMsg(buffer);
+			memcpy(responseBuffer, buffer, sizeof(char) * responseBufferLen);
+
 			printf("retuen msg code: %d\n\n", returnMsg.header->code);
 			isMsgSucceeded = true;
 		}
 
 	} while (failCount < maxFailAllow && !isMsgSucceeded);
 	if (failCount == maxFailAllow) {
-		printf("FATAL: Fail to send %d msg\n", packet.header->code);
+		printf("\nFATAL: Fail to get response for %d msg\n", packet.header->code);
+		WSACleanup();
 		return false;
 	}
 	return true;
@@ -98,84 +82,85 @@ bool sendPacketWithFail(int sock, ClientPacket packet, char* responseBuffer, int
 
 int main(int argc, char const *argv[])
 {
-	TransferInfo transferInfo;
-	int sock = connectToServer(transferInfo);
-	if (sock == -1) {
-		return -1;
+	TransferMeInfo transferMeInfo;
+	int sock = connectToServer(transferMeInfo);
+	ClientHeader clientHeader(transferMeInfo.uuid, clientVersion);
+
+	if (transferMeInfo.uuid[0] == '\0') {
+		printf("--Register--\n");
+		//create packet for register
+		clientHeader.code = Register;
+		clientHeader.payloadSize = FILE_PATH_LENGTH;
+
+		RegisterPayload registerPayload(transferMeInfo.name);
+		ClientPacket registerPacket(&clientHeader, &registerPayload);
+
+		char registerResponseBuffer[serverResponseHeaderSize + UUID_LENGTH] = { 0 };
+		if (!sendPacketWithFail(sock, registerPacket, registerResponseBuffer, serverResponseHeaderSize + UUID_LENGTH)) {
+			printf("The username maybe in use already\n");
+			return -1;
+		}
+
+		ServerRegisterOkResponsePacket serverRegisterOkResponsePacket(registerResponseBuffer);
+		memcpy(&transferMeInfo.uuid, serverRegisterOkResponsePacket.payload.clientId, sizeof(char) * UUID_LENGTH);
+		transferMeInfo.createMeInfoFile();
 	}
 
-	char buffer[1024] = { 0 };
-
-	//TODO: check if user registered
-
-	//create packet for register
-	char emptyClientId[] = "0000000000000000";
-	ClientHeader clientHeader(emptyClientId, 3, Register, 255);
-	RegisterPayload registerPayload(transferInfo.name);
-	ClientPacket registerPacket(&clientHeader, &registerPayload);
-
-	char registerResponseBuffer[23] = { 0 };
-	if (!sendPacketWithFail(sock, registerPacket, registerResponseBuffer, 23)) {
-		printf("The username maybe in use already");
-		return -1;
-	}
-
-	char clientIdFromServer[16];
-	ServerRegisterOkResponsePacket serverRegisterOkResponsePacket(registerResponseBuffer);
-	std::memcpy(clientIdFromServer, serverRegisterOkResponsePacket.payload.clientId, sizeof(char) * 16);
-	std::memcpy(&clientHeader.clientId, &clientIdFromServer, sizeof(char) * 16);
+	printf("--Send Public Key--\n");
+	//create packet for sending public key
 	clientHeader.code = SendPublicKey;
-	clientHeader.payloadSize = 255 + 160;
-
-	RSAPrivateWrapper rsapriv;
+	clientHeader.payloadSize = NAME_LENGTH + PUBLIC_KEY_LENGTH;
+	RSAPrivateWrapper rsapriv(transferMeInfo.privateKey);
 	string pubkey = rsapriv.getPublicKey();
-
-	SendPublicKeyPayload sendPublicKeyPayload(transferInfo.name, pubkey.c_str());
+	
+	SendPublicKeyPayload sendPublicKeyPayload(transferMeInfo.name, pubkey.c_str());
 	ClientPacket publicKeyPacket(&clientHeader, &sendPublicKeyPayload);
 
-	char publicKeyResponseBuffer[1 + 2 + 4 + 16 + 128] = { 0 };
-	if (!sendPacketWithFail(sock, publicKeyPacket, publicKeyResponseBuffer, 1 + 2 + 4 + 16 + 128)) {
-		printf("Faild to get encrepted AES key");
+	char publicKeyResponseBuffer[serverResponseHeaderSize + UUID_LENGTH + 128] = { 0 };
+	if (!sendPacketWithFail(sock, publicKeyPacket, publicKeyResponseBuffer, serverResponseHeaderSize + UUID_LENGTH + 128)) {
+		printf("Faild to get encrepted AES key\n");
 		return -1;
 	}
 	ServerGotAesEncreptedKeyPacket serverGotAesEncreptedKeyPacket(publicKeyResponseBuffer);
 
-	// decrypt AES key, with private RSA key (save the AES key into aesKey)
-	std::string encreptedAesKey(serverGotAesEncreptedKeyPacket.payload.encreptedKey);
-	std::string aesKey = rsapriv.decrypt(encreptedAesKey.c_str(), 128);
-	
+	printf("--Encrypt File With AES--\n");
+	// decrypt AES key with private RSA key
+	string aesKey = rsapriv.decrypt(serverGotAesEncreptedKeyPacket.payload.encreptedKey, 128);
 
 	bool isCrsOk = false;
 	int failCount = 0;
 	do {
 		AESWrapper aes(reinterpret_cast<const unsigned char*>(aesKey.c_str()), 16);
-		// TODO: fix first 16 chars bug
-		std::string paddingForBug = "aaaaaaaaaaaaaaaa";
-		const char* fileData = "my name is hey my name is hadar text text hadar text text text textt hey my name is hadar text text hadar text text text textt hey my name is hadar text text hadar";
-		std::string fileDataToSend = paddingForBug + fileData;
-		char fileName[255] = "fileName";
-		std::string encryptedFileData = aes.encrypt(fileDataToSend.c_str(), fileDataToSend.length());
 
+		ifstream t(transferMeInfo.fileToSendName);
+		stringstream fileData;
+		fileData << t.rdbuf();
+		
+		string fileDataToSend = fileData.str();
+		string encryptedFileData = aes.encrypt(fileDataToSend.c_str(), fileDataToSend.size());
+
+		printf("--Send Encrypted File--\n");
 		clientHeader.code = SendFile;
-		clientHeader.payloadSize = 16 + 4 + 255 + encryptedFileData.length();
-		SendFilePayload sendFilePayload(clientHeader.clientId, encryptedFileData.length(), fileName, encryptedFileData.c_str());
-
+		clientHeader.payloadSize = UUID_LENGTH + 4 + FILE_PATH_LENGTH + encryptedFileData.size();
+		SendFilePayload sendFilePayload(clientHeader.clientId, encryptedFileData.size(), transferMeInfo.fileToSendName, encryptedFileData.c_str());
+		
 		ClientPacket filePacket(&clientHeader, &sendFilePayload);
 		
-		char fileResponseBuffer[1 + 2 + 4 + 16 + 4 + 255 + 4] = { 0 };
-		if (!sendPacketWithFail(sock, filePacket, fileResponseBuffer, 1 + 2 + 4 + 16 + 4 + 255 + 4)) {
-			printf("Faild to crc from server");
+		char fileResponseBuffer[1 + 2 + 4 + UUID_LENGTH + 4 + FILE_PATH_LENGTH + 4] = { 0 };
+		if (!sendPacketWithFail(sock, filePacket, fileResponseBuffer, 1 + 2 + 4 + UUID_LENGTH + 4 + FILE_PATH_LENGTH + 4)) {
+			printf("Faild to get crc from server\n");
 			return -1;
 		}
 		ServerGotFilePacket serverGotFilePacket(fileResponseBuffer);
 
 		uint32_t table[256];
 		crc32::generate_table(table);
-		uint32_t crc = crc32::update(table, 0, fileData, strlen(fileData));
+		string fileDataString = fileData.str();
+		uint32_t crc = crc32::update(table, 0, fileDataString.c_str(), fileDataString.size());
 
-		CrcMsgPayload crcMsgPayload(clientHeader.clientId, fileName);
+		CrcMsgPayload crcMsgPayload(clientHeader.clientId, transferMeInfo.fileToSendName);
 		char crcResponseBuffer[1 + 2 + 4] = { 0 };
-		clientHeader.payloadSize = 16 + 255;
+		clientHeader.payloadSize = UUID_LENGTH + FILE_PATH_LENGTH;
 		
 		if (crc == serverGotFilePacket.payload.cksum) {
 			printf("Checksum ok\n");
@@ -185,20 +170,20 @@ int main(int argc, char const *argv[])
 			ClientPacket crcPacket(&clientHeader, &crcMsgPayload);
 
 			if (!sendPacketWithFail(sock, crcPacket, crcResponseBuffer, 1 + 2 + 4)) {
-				printf("Faild to send crc ok msg to server");
+				printf("Faild to send crc ok msg to server\n");
 				return -1;
 			}
 		}
 		else {
 			failCount++;
-			printf("Checksum failed");
+			printf("Checksum failed\n");
 
 			if (failCount != maxFailAllow) {
 				clientHeader.code = CrcNotOk;
 				ClientPacket failCrcPacket(&clientHeader, &crcMsgPayload);
 
 				if (!sendPacketWithFail(sock, failCrcPacket, crcResponseBuffer, 1 + 2 + 4)) {
-					printf("Faild to send faild crc msg to server");
+					printf("Faild to send faild crc msg to server\n");
 					return -1;
 				}
 			}
@@ -207,7 +192,7 @@ int main(int argc, char const *argv[])
 				ClientPacket failCrcPacket(&clientHeader, &crcMsgPayload);
 
 				if (!sendPacketWithFail(sock, failCrcPacket, crcResponseBuffer, 1 + 2 + 4)) {
-					printf("Faild to send faild crc on the fourth time msg to server");
+					printf("Faild to send faild crc on the fourth time msg to server\n");
 					return -1;
 				}
 			}

@@ -3,6 +3,10 @@
 
 #include <string>
 
+using namespace std;
+
+const unsigned int serverResponseHeaderSize = sizeof(char) + sizeof(short) + sizeof(int);
+
 class Header {
 public:
 	char version;
@@ -17,31 +21,33 @@ public:
 		this->version = version;
 	}
 
-	std::string headerToJsonString() {
+	string headerToBuffer() {
 		return "\"{"
-			"'Version': " + std::to_string(this->version) + ", "
-			"'Code': " + std::to_string(this->code) + ", "
-			"'Payload size': " + std::to_string(this->payloadSize) +
+			"'Version': " + to_string(this->version) + ", "
+			"'Code': " + to_string(this->code) + ", "
+			"'Payload size': " + to_string(this->payloadSize) +
 			"}\"";
 	}
 };
 
 class ClientHeader: public Header {
 public:
-	char clientId[16];
+	unsigned char clientId[UUID_LENGTH];
 
-	ClientHeader(char clientId[16], char version, short code, int payloadSize) {
-		std::memcpy(this->clientId, clientId, sizeof(this->clientId));
-		this->code = code;
-		this->payloadSize = payloadSize;
+	ClientHeader(unsigned char clientId[UUID_LENGTH], char version) {
+		memcpy(this->clientId, clientId, sizeof(this->clientId));
 		this->version = version;
 	}
 
-	void headerToJsonString(char* headerDataToSend) {
-		std::memcpy(&headerDataToSend[0], &this->clientId, sizeof(char) * 16);
-		std::memcpy(&headerDataToSend[16], &this->version, sizeof(char));
-		std::memcpy(&headerDataToSend[17], &this->code, sizeof(short));
-		std::memcpy(&headerDataToSend[19], &this->payloadSize, sizeof(int));
+	void headerToBuffer(char* headerDataToSend) {
+		memcpy(&headerDataToSend[0], &this->clientId, sizeof(char) * UUID_LENGTH);
+		memcpy(&headerDataToSend[UUID_LENGTH], &this->version, sizeof(char));
+		memcpy(&headerDataToSend[17], &this->code, sizeof(short));
+		memcpy(&headerDataToSend[19], &this->payloadSize, sizeof(int));
+	}
+
+	void setClientId(char clientId[UUID_LENGTH]) {
+		memcpy(this->clientId, clientId, sizeof(this->clientId));
 	}
 };
 

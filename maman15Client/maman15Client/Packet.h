@@ -33,16 +33,20 @@ public:
 		
 		switch (serverHeader.code)
 		{
+		case RegisterOk: 
+		{
+			break;
+		}
 
 		case GetAes:
 		{
-			unsigned char clientId[16];
+			unsigned char clientId[UUID_LENGTH];
 			//the size of publicEncryptedAesKey shuold not be 16, 16 is the size of the not encrypted key
 			//the size of publicEncryptedAesKey shuold be serverHeader.payloadSize - 16
 			unsigned char publicEncryptedAesKey[16];
 
-			memcpy(&clientId, &buffer[7], sizeof(char) * 16);
-			memcpy(&publicEncryptedAesKey, &buffer[23], sizeof(char) * 16);
+			memcpy(&clientId, &buffer[serverResponseHeaderSize], sizeof(char) * UUID_LENGTH);
+			memcpy(&publicEncryptedAesKey, &buffer[serverResponseHeaderSize + UUID_LENGTH], sizeof(char) * 16);
 			//GetAesPayload getAesPayload(clientId, publicEncryptedAesKey);
 			//this->payload = &registerOkPayload;
 
@@ -51,15 +55,15 @@ public:
 
 		case FileOkAndCrc:
 		{
-			unsigned char clientId[16];
+			unsigned char clientId[UUID_LENGTH];
 			unsigned int fileSize;
-			unsigned char fileName[255];
+			unsigned char fileName[FILE_PATH_LENGTH];
 			unsigned int cksum;
 
-			memcpy(&clientId, &buffer[7], sizeof(char) * 16);
-			memcpy(&fileSize, &buffer[23], sizeof(int));
-			memcpy(&fileName, &buffer[27], sizeof(char) * 255);
-			memcpy(&cksum, &buffer[283], sizeof(int));
+			memcpy(&clientId, &buffer[serverResponseHeaderSize], sizeof(char) * UUID_LENGTH);
+			memcpy(&fileSize, &buffer[serverResponseHeaderSize + UUID_LENGTH], sizeof(int));
+			memcpy(&fileName, &buffer[serverResponseHeaderSize + UUID_LENGTH + sizeof(int)], sizeof(char) * FILE_PATH_LENGTH);
+			memcpy(&cksum, &buffer[serverResponseHeaderSize + UUID_LENGTH + sizeof(int) + FILE_PATH_LENGTH], sizeof(int));
 			//FileOkAndCrcPayload fileOkAndCrc(clientId, fileSize, fileName, cksum);
 			//this->payload = &registerOkPayload;
 
@@ -68,7 +72,6 @@ public:
 
 		case GotMsg:
 		{
-			//unclear
 			break;
 		}
 
@@ -90,9 +93,9 @@ public:
 		this->payload = payload;
 	}
 
-	void packetToJsonString(char* packetDataToSend) {
-		(*header).headerToJsonString(packetDataToSend);
-		(*payload).payloadToJsonString(&packetDataToSend[23]);
+	void packetToBuffer(char* packetDataToSend) {
+		(*header).headerToBuffer(packetDataToSend);
+		(*payload).payloadToBuffer(&packetDataToSend[23]);
 	}
 };
 
@@ -101,8 +104,8 @@ public:
 	RegisterOkPayload payload;
 
 	ServerRegisterOkResponsePacket(char* buffer) {
-		unsigned char clientId[16];
-		memcpy(clientId, &buffer[7], sizeof(char) * 16);
+		unsigned char clientId[UUID_LENGTH];
+		memcpy(clientId, &buffer[1 + 2 + 4], sizeof(char) * UUID_LENGTH);
 		RegisterOkPayload registerOkPayload(clientId);
 		this->payload = registerOkPayload;
 	}
@@ -113,11 +116,11 @@ public:
 	GotAesEncreptedKeyPayload payload;
 
 	ServerGotAesEncreptedKeyPacket(char* buffer) {
-		unsigned char clientId[16] = { 0 };
+		unsigned char clientId[UUID_LENGTH] = { 0 };
 		char aesEncreptedKey[128] = { 0 };
 		int encreptedKeyLen;
 
-		memcpy(clientId, &buffer[7], sizeof(char) * 16);
+		memcpy(clientId, &buffer[serverResponseHeaderSize], sizeof(char) * UUID_LENGTH);
 		memcpy(&encreptedKeyLen, &buffer[3], sizeof(int));
 		encreptedKeyLen = encreptedKeyLen - sizeof(clientId);
 		memcpy(&aesEncreptedKey, &buffer[23], sizeof(char) * encreptedKeyLen);
@@ -132,15 +135,15 @@ public:
 	GotFilePayload payload;
 
 	ServerGotFilePacket(char buffer[]) {
-		unsigned char clientId[16] = { 0 };
+		unsigned char clientId[UUID_LENGTH] = { 0 };
 		unsigned int fileSize = 0;
-		unsigned char fileName[255] = { 0 };
+		unsigned char fileName[FILE_PATH_LENGTH] = { 0 };
 		unsigned int cksum = 0;
 
-		memcpy(clientId, &buffer[7], sizeof(char) * 16);
-		memcpy(&fileSize, &buffer[23], sizeof(int));
-		memcpy(fileName, &buffer[27], sizeof(char) * 255);
-		memcpy(&cksum, &buffer[282], sizeof(int));
+		memcpy(clientId, &buffer[serverResponseHeaderSize], sizeof(char) * UUID_LENGTH);
+		memcpy(&fileSize, &buffer[serverResponseHeaderSize + UUID_LENGTH], sizeof(int));
+		memcpy(fileName, &buffer[serverResponseHeaderSize + UUID_LENGTH + sizeof(int)], sizeof(char) * FILE_PATH_LENGTH);
+		memcpy(&cksum, &buffer[serverResponseHeaderSize + UUID_LENGTH + sizeof(int) + FILE_PATH_LENGTH], sizeof(int));
 
 		GotFilePayload gotFilePayload(clientId, fileSize, fileName, cksum);
 		this->payload = gotFilePayload;
